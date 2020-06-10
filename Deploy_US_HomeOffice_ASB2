@@ -1,0 +1,96 @@
+---
+- name: Deploy a home office network
+  hosts: localhost
+  gather_facts: no
+  vars:
+    url: https://api.meraki.com/api/v0/
+    org_id: 683628
+    netid: []
+
+
+
+
+  tasks:
+
+    - name: Get a network ID
+      uri:
+        url: "{{ url }}organizations/{{org_id}}/networks"
+        method: GET
+        return_content: yes
+        headers:
+          X-Cisco-Meraki-API-Key: "{{ api_key }}"
+          Accept: 'application/json'
+          Content-Type: 'application/json'
+      register: response
+
+    - name: Filter - searching available netIDs
+      set_fact:
+        netid: "{{ item['id'] }}"
+      with_items: "{{ response.json }}"
+      when: (item.name == "mx64_{{ serial }}_US")
+      no_log: True
+
+    - name: List response
+      debug:
+        msg: "{{ netid }}"
+
+    - name: Update network details
+      uri:
+        url: "{{ url }}networks/{{ netid }}"
+        method: PUT
+        return_content: yes
+        headers:
+          X-Cisco-Meraki-API-Key: "{{ api_key }}"
+          Accept: 'application/json'
+          Content-Type: 'application/json'
+        body_format: json
+        validate_certs: no
+        follow_redirects: yes
+        body: '{ "name": "mx64_{{ surname }}{{ username }}_US",
+               "tags": "tagtest",
+               "disableMyMerakiCom": "false" }'
+      register: update_response
+
+
+    - name: List update_response
+      debug:
+        msg: "{{ update_response }}"
+
+
+    - name: Update device details
+      uri:
+        url: "{{ url }}networks/{{ netid }}/devices/{{serial}}"
+        method: PUT
+        return_content: yes
+        headers:
+          X-Cisco-Meraki-API-Key: "{{ api_key }}"
+          Accept: 'application/json'
+          Content-Type: 'application/json'
+        body_format: json
+        validate_certs: no
+        follow_redirects: yes
+        body: '{ "name": "mx64_{{surname}}_{{username}}_US",
+               "address": "{{ device_address }}",
+               "moveMapMarker": "true" }'
+      register: update_device_response
+    #
+    # - name: List update_device_response
+    #   debug:
+    #     msg: "{{ update_device_response }}"
+
+
+    - name: Bind home office network to US EAST template
+      uri:
+        url: "{{ url }}networks/{{ netid }}/bind"
+        method: POST
+        return_content: yes
+        headers:
+          X-Cisco-Meraki-API-Key: "{{ api_key }}"
+          Accept: 'application/json'
+          Content-Type: 'application/json'
+        body_format: json
+        validate_certs: no
+        follow_redirects: yes
+        body: '{ "configTemplateId": "N_566327653141903800",
+               "autoBind": "false" }'
+      register: bind_response

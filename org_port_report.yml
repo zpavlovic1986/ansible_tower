@@ -1,0 +1,101 @@
+---
+- name: Org port report
+  hosts: localhost
+  gather_facts: yes
+  vars_prompt:
+
+    - name: org_id
+      prompt: " Select organization to report on. \n
+               683628 is McKesson \n
+               786007 is MckessonEU \n "
+      private: no
+
+    - name: port_err
+      prompt: " What do you want to check the ports for? \n
+                CRC align errors \n
+                Collisions \n
+                "
+      private: no
+
+  vars:
+    url: https://api.meraki.com/api/v0/
+    api_key: 1153c24ab6fc075f48837e3f2f60c7faa1acb9d5
+    org_id: 683628 #683628 McKesson 786007 MckessonEU
+    switch_serial: []
+    response: []
+
+  tasks:
+
+    - debug:
+          var=ansible_date_time
+    - debug:
+          msg="the current date is {{ ansible_date_time.epoch }}"
+
+    - name: Get all org devices
+      uri:
+        url: "{{ url }}organizations/{{ org_id }}/devices"
+        method: GET
+        return_content: yes
+        headers:
+          X-Cisco-Meraki-API-Key: "{{ api_key }}"
+          Accept: 'application/json'
+          Content-Type: 'application/json'
+      register: response1
+
+    - name: Setting facts
+      set_fact:
+        switch_serial: "{{ item['serial'] }}"
+      with_items: "{{ response1.json }}"
+      when: (item.model == "MS120-24P") or (item.model == "MS120-48FP")
+
+    - name: list switch serials
+      debug:
+        msg: "{{ response1 }}"
+
+
+    - name: list response 1
+      debug:
+        msg: "{{ switch_serial }}"
+
+
+    - name: Get switch port statistics
+      uri:
+        url: "{{ url }}devices/{{ switch_serial }}/switchPortStatuses/packets?t0={{ ansible_date_time.epoch }}"
+        method: GET
+        return_content: yes
+        headers:
+          X-Cisco-Meraki-API-Key: "{{ api_key }}"
+          Accept: 'application/json'
+          Content-Type: 'application/json'
+      register: response2
+      ignore_errors: yes
+      with_items: "{{ response1 }}"
+      when: (item.model == "MS120-24P") or (item.model == "MS120-48FP")
+
+
+
+    - name: list switch serials
+      debug:
+        msg: "{{ response2 }}"
+
+
+    - name: Write response to a file
+      copy:
+        dest: "errors/{{ item['serial'] }}.json"
+        content: "{{ response2.json | to_nice_yaml }}"
+      ignore_errors: yes
+      with_items: "{{ response1.json }}"
+      when: (item.model == "MS120-24P") or (item.model == "MS120-48FP")
+
+
+    - name: Display switches with CRC errors
+      shell: "grep -r -A 7 '{{ port_err }}' | grep total: | grep -v 'total: 0' | sort -u"
+      register: crc_switches
+
+    - debug:
+        msg: "{{ crc_switches }}"
+
+
+
+
+#grep -r -A 7 'Topology changes' | grep total: | grep -v 'total: 0' | sort -u
